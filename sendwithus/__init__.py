@@ -476,7 +476,8 @@ class BatchAPI(api):
             logger.debug('\tresponse: %s' % r.json())
         except:
             logger.debug('\tresponse: %s' % r.content)
-
+        
+        r.raise_for_status()
         return r.json()
 
     def command_length(self):
