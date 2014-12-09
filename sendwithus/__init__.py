@@ -18,7 +18,7 @@ logger = logging.getLogger('sendwithus')
 logger.propagate = False
 
 
-class api:
+class api(object):
     API_PROTO = 'https'
     API_PORT = '443'
     API_HOST = 'api.sendwithus.com'
@@ -430,7 +430,10 @@ class api:
 
 
 class BatchAPI(api):
-    COMMANDS = []
+
+    def __init__(self, *args, **kwargs):
+        super(BatchAPI, self).__init__(*args, **kwargs)
+        self.COMMANDS = []
 
     def _api_request(self, endpoint, http_method, *args, **kwargs):
         """Private method for api requests"""
