@@ -6,7 +6,7 @@ with open('README.md') as fp:
 
 setup(
     name='sendwithus',
-    version='1.2.1',
+    version='1.5.5',
     author='sendwithus',
     author_email='us@sendwithus.com',
     packages=find_packages(),
@@ -17,7 +17,8 @@ setup(
     long_description=long_description,
     test_suite="sendwithus.test",
     install_requires=[
-        "requests >= 1.1.0"
+        "requests >= 1.1.0",
+        "six >= 1.9.0"
     ],
     classifiers=[
         "Programming Language :: Python :: 2",

@@ -3,14 +3,15 @@ sendwithus - Python Client
 For more information, visit http://www.sendwithus.com
 """
 
+import base64
 import logging
 import json
 import requests
+from six import string_types
 import warnings
-import base64
 
-from encoder import SendwithusJSONEncoder
-from version import version
+from .encoder import SendwithusJSONEncoder
+from .version import version
 
 
 LOGGER_FORMAT = '%(asctime)-15s %(message)s'
@@ -18,7 +19,7 @@ logger = logging.getLogger('sendwithus')
 logger.propagate = False
 
 
-class api(object):
+class api:
     API_PROTO = 'https'
     API_PORT = '443'
     API_HOST = 'api.sendwithus.com'
@@ -31,21 +32,29 @@ class api(object):
     HTTP_PUT = 'PUT'
     HTTP_DELETE = 'DELETE'
 
-    TEMPLATES_ENDPOINT = 'templates'
     LOGS_ENDPOINT = 'logs'
     GET_LOG_ENDPOINT = 'logs/%s'
     GET_LOG_EVENTS_ENDPOINT = 'logs/%s/events'
+    TEMPLATES_ENDPOINT = 'templates'
     TEMPLATES_SPECIFIC_ENDPOINT = 'templates/%s'
+    TEMPLATES_LOCALES_ENDPOINT = 'templates/%s/locales'
+    TEMPLATES_SPECIFIC_LOCALE_VERSIONS_ENDPOINT = 'templates/%s/locales/%s/versions'
     TEMPLATES_NEW_VERSION_ENDPOINT = 'templates/%s/versions'
     TEMPLATES_VERSION_ENDPOINT = 'templates/%s/versions/%s'
+    SNIPPETS_ENDPOINT = 'snippets'
+    SNIPPET_ENDPOINT = 'snippets/%s'
     SEND_ENDPOINT = 'send'
     SEGMENTS_ENDPOINT = 'segments'
     RUN_SEGMENT_ENDPOINT = 'segments/%s/run'
     SEND_SEGMENT_ENDPOINT = 'segments/%s/send'
     DRIPS_DEACTIVATE_ENDPOINT = 'drips/deactivate'
     CUSTOMER_CREATE_ENDPOINT = 'customers'
+    CUSTOMER_DETAILS_ENDPOINT = 'customers/%s'
     CUSTOMER_DELETE_ENDPOINT = 'customers/%s'
     CUSTOMER_CONVERSION_ENDPOINT = 'customers/%s/conversions'
+    CUSTOMER_GROUPS_ENDPOINT = 'customers/%s/groups/%s'
+    GROUPS_ENDPOINT = 'groups'
+    GROUP_ENDPOINT = 'groups/%s'
     DRIP_CAMPAIGN_LIST_ENDPOINT = 'drip_campaigns'
     DRIP_CAMPAIGN_ACTIVATE_ENDPOINT = 'drip_campaigns/%s/activate'
     DRIP_CAMPAIGN_DEACTIVATE_ENDPOINT = 'drip_campaigns/%s/deactivate'
@@ -61,13 +70,14 @@ class api(object):
 
     DEBUG = False
 
-    def __init__(self, api_key=None, **kwargs):
+    def __init__(self, api_key=None, json_encoder=SendwithusJSONEncoder, **kwargs):
         """Constructor, expects api key"""
 
         if not api_key:
             raise Exception("You must specify an api key")
 
         self.API_KEY = api_key
+        self._json_encoder = json_encoder
 
         if 'API_HOST' in kwargs:
             self.API_HOST = kwargs['API_HOST']
@@ -111,7 +121,7 @@ class api(object):
     def _build_payload(self, data):
         if not data:
             return None
-        return json.dumps(data, cls=SendwithusJSONEncoder)
+        return json.dumps(data, cls=self._json_encoder)
 
     def _api_request(self, endpoint, http_method, *args, **kwargs):
         """Private method for api requests"""
@@ -134,6 +144,11 @@ class api(object):
                 r = requests.post(path, auth=auth, data=data, headers=headers)
             else:
                 r = requests.post(path, auth=auth, headers=headers)
+        elif http_method == self.HTTP_PUT:
+            if (data):
+                r = requests.put(path, auth=auth, data=data, headers=headers)
+            else:
+                r = requests.put(path, auth=auth, headers=headers)
         elif http_method == self.HTTP_DELETE:
             r = requests.delete(path, auth=auth, headers=headers)
         else:
@@ -170,7 +185,8 @@ class api(object):
     def get_template(self, template_id, version=None):
         """ API call to get a specific template """
         if (version):
-            return self._api_request(self.TEMPLATES_VERSION_ENDPOINT % (template_id, version), self.HTTP_GET)
+            return self._api_request(
+                self.TEMPLATES_VERSION_ENDPOINT % (template_id, version), self.HTTP_GET)
         else:
             return self._api_request(self.TEMPLATES_SPECIFIC_ENDPOINT % template_id, self.HTTP_GET)
 
@@ -192,7 +208,25 @@ class api(object):
             self.HTTP_POST,
             payload=payload)
 
-    def create_new_version(self, name, subject, text='', template_id=None, html=None):
+    def create_new_locale(self, template_id, locale, version_name, subject, text='', html=''):
+        """ API call to create a new locale and version of a template """
+        payload = {
+            'locale': locale,
+            'name': version_name,
+            'subject': subject
+        }
+
+        if html:
+            payload['html'] = html
+        if text:
+            payload['text'] = text
+
+        return self._api_request(
+            self.TEMPLATES_LOCALES_ENDPOINT % template_id,
+            self.HTTP_POST,
+            payload=payload)
+
+    def create_new_version(self, name, subject, text='', template_id=None, html=None, locale=None):
         """ API call to create a new version of a template """
         if(html):
             payload = {
@@ -208,8 +242,13 @@ class api(object):
                 'text': text
             }
 
+        if locale:
+            url = self.TEMPLATES_SPECIFIC_LOCALE_VERSIONS_ENDPOINT % (template_id, locale)
+        else:
+            url = self.TEMPLATES_NEW_VERSION_ENDPOINT % template_id
+
         return self._api_request(
-            self.TEMPLATES_NEW_VERSION_ENDPOINT % template_id,
+            url,
             self.HTTP_POST,
             payload=payload)
 
@@ -234,6 +273,34 @@ class api(object):
             self.HTTP_PUT,
             payload=payload)
 
+    def snippets(self):
+        """ API call to get list of snippets """
+        return self._api_request(self.SNIPPETS_ENDPOINT, self.HTTP_GET)
+
+    def get_snippet(self, snippet_id):
+        """ API call to get a specific Snippet """
+        return self._api_request(self.SNIPPET_ENDPOINT % (snippet_id), self.HTTP_GET)
+
+    def create_snippet(self, name, body):
+        """ API call to create a Snippet """
+        payload = {
+            'name': name,
+            'body': body
+        }
+        return self._api_request(self.SNIPPETS_ENDPOINT, self.HTTP_POST, payload=payload)
+
+    def update_snippet(self, snippet_id, name, body):
+        payload = {
+            'name': name,
+            'body': body
+        }
+
+        return self._api_request(
+            self.SNIPPET_ENDPOINT % (snippet_id),
+            self.HTTP_PUT,
+            payload=payload
+        )
+
     def drip_deactivate(self, email_address):
         payload = {'email_address': email_address}
 
@@ -251,15 +318,18 @@ class api(object):
             cc=None,
             bcc=None,
             tags=[],
+            headers={},
             esp_account=None,
+            locale=None,
             email_version_name=None,
+            inline=None,
             files=[]):
         """ API call to send an email """
         if not email_data:
             email_data = {}
 
         # for backwards compatibility, will be removed
-        if isinstance(recipient, basestring):
+        if isinstance(recipient, string_types):
             warnings.warn(
                 "Passing email directly for recipient is deprecated",
                 DeprecationWarning)
@@ -290,18 +360,39 @@ class api(object):
                     'kwarg tags must be type(list), got %s' % (type(tags)))
             payload['tags'] = tags
 
-        if esp_account:
-            if not isinstance(esp_account, basestring):
+        if headers:
+            if not type(headers) == dict:
                 logger.error(
-                    'kwarg esp_account must be type(basestring), got %s' % (type(esp_account)))
+                    'kwarg headers must be type(dict), got %s' % (type(headers)))
+            payload['headers'] = headers
+
+        if esp_account:
+            if not isinstance(esp_account, string_types):
+                logger.error(
+                    'kwarg esp_account must be a string, got %s' % (type(esp_account)))
             payload['esp_account'] = esp_account
 
+        if locale:
+            if not isinstance(locale, string_types):
+                logger.error('kwarg locale must be a string, got %s' % (type(locale)))
+            payload['locale'] = locale
+
         if email_version_name:
-            if not isinstance(email_version_name, basestring):
+            if not isinstance(email_version_name, string_types):
                 logger.error(
-                    'kwarg email_version_name must be type(basestring), got %s' % (
+                    'kwarg email_version_name must be a string, got %s' % (
                         type(email_version_name)))
             payload['version_name'] = email_version_name
+
+        if inline:
+            if isinstance(inline, file):
+                image = ({'id': inline.name, 'data': base64.b64encode(inline.read())})
+
+                payload['inline'] = image
+
+            else:
+                logger.error(
+                    'kwarg files must be type(file), got %s' % type(inline))
 
         if files:
             file_list = []
@@ -353,6 +444,11 @@ class api(object):
         return self._api_request(self.CUSTOMER_CREATE_ENDPOINT,
                                  self.HTTP_POST, payload=payload)
 
+    def customer_details(self, email):
+        endpoint = self.CUSTOMER_DETAILS_ENDPOINT % email
+
+        return self._api_request(endpoint, self.HTTP_GET)
+
     def customer_delete(self, email):
         endpoint = self.CUSTOMER_DELETE_ENDPOINT % email
 
@@ -367,19 +463,92 @@ class api(object):
 
         return self._api_request(endpoint, self.HTTP_POST, payload=payload)
 
-    # New Drips 2.0 API
+    def create_customer_group(self, name, description=''):
+        endpoint = self.GROUPS_ENDPOINT
+
+        payload = {
+            "name": name,
+            "description": description
+        }
+        return self._api_request(endpoint, self.HTTP_POST, payload=payload)
+
+    def delete_customer_group(self, group_id):
+        endpoint = self.GROUP_ENDPOINT % group_id
+
+        return self._api_request(endpoint, self.HTTP_DELETE)
+
+    def update_customer_group(self, group_id, name='', description=''):
+        endpoint = self.GROUP_ENDPOINT % group_id
+
+        payload = {
+            "name": name,
+            "description": description
+        }
+
+        return self._api_request(endpoint, self.HTTP_PUT, payload=payload)
+
+    def add_customer_to_group(self, email, group_id):
+        endpoint = self.CUSTOMER_GROUPS_ENDPOINT % (email, group_id)
+        return self._api_request(endpoint, self.HTTP_POST)
+
+    def remove_customer_from_group(self, email, group_id):
+        endpoint = self.CUSTOMER_GROUPS_ENDPOINT % (email, group_id)
+        return self._api_request(endpoint, self.HTTP_DELETE)
+
     def list_drip_campaigns(self):
         return self._api_request(self.DRIP_CAMPAIGN_LIST_ENDPOINT, self.HTTP_GET)
 
-    def start_on_drip_campaign(self, recipient_address, drip_campaign_id, email_data=None):
-        if not email_data:
-            email_data = {}
-
+    def start_on_drip_campaign(
+            self,
+            drip_campaign_id,
+            recipient,
+            email_data={},
+            sender=None,
+            cc=None,
+            bcc=None,
+            tags=[],
+            esp_account=None,
+            locale=None):
         endpoint = self.DRIP_CAMPAIGN_ACTIVATE_ENDPOINT % drip_campaign_id
+
         payload = {
-            'recipient_address': recipient_address,
+            'recipient': recipient,
             'email_data': email_data
         }
+
+        # Optional params
+
+        if sender:
+            payload['sender'] = sender
+
+        if cc:
+            if not type(cc) == list:
+                logger.error(
+                    'kwarg cc must be type(list), got %s' % type(cc))
+            payload['cc'] = cc
+
+        if bcc:
+            if not type(bcc) == list:
+                logger.error(
+                    'kwarg bcc must be type(list), got %s' % type(bcc))
+            payload['bcc'] = bcc
+
+        if tags:
+            if not type(tags) == list:
+                logger.error(
+                    'kwarg tags must be type(list), got %s' % (type(tags)))
+            payload['tags'] = tags
+
+        if esp_account:
+            if not isinstance(esp_account, string_types):
+                logger.error(
+                    'kwarg esp_account must be a string, got %s' % (type(esp_account)))
+            payload['esp_account'] = esp_account
+
+        if locale:
+            if not isinstance(locale, string_types):
+                logger.error('kwarg locale must be a string, got %s' % (type(locale)))
+            payload['locale'] = locale
 
         return self._api_request(endpoint, self.HTTP_POST, payload=payload)
 
@@ -413,7 +582,8 @@ class api(object):
             API_PROTO=self.API_PROTO,
             API_PORT=self.API_PORT,
             API_VERSION=self.API_VERSION,
-            DEBUG=self.DEBUG)
+            DEBUG=self.DEBUG,
+            json_encoder=self._json_encoder)
 
     def render(self, email_id, email_data, version_id=None, version_name=None):
         payload = {
@@ -432,8 +602,8 @@ class api(object):
 class BatchAPI(api):
 
     def __init__(self, *args, **kwargs):
-        super(BatchAPI, self).__init__(*args, **kwargs)
-        self.COMMANDS = []
+        api.__init__(self, *args, **kwargs)
+        self._commands = []
 
     def _api_request(self, endpoint, http_method, *args, **kwargs):
         """Private method for api requests"""
@@ -454,34 +624,33 @@ class BatchAPI(api):
         if data:
             command['body'] = data
 
-        self.COMMANDS.append(command)
+        self._commands.append(command)
 
     def execute(self):
         """Execute all currently queued batch commands"""
-        logger.debug(' > Batch API request (length %s)' % len(self.COMMANDS))
+        logger.debug(' > Batch API request (length %s)' % len(self._commands))
 
         auth = self._build_http_auth()
 
         headers = self._build_request_headers()
         logger.debug('\tbatch headers: %s' % headers)
 
-        logger.debug('\tbatch command length: %s' % len(self.COMMANDS))
+        logger.debug('\tbatch command length: %s' % len(self._commands))
 
         path = self._build_request_path(self.BATCH_ENDPOINT)
 
-        data = json.dumps(self.COMMANDS, cls=SendwithusJSONEncoder)
+        data = json.dumps(self._commands, cls=self._json_encoder)
         r = requests.post(path, auth=auth, headers=headers, data=data)
 
-        self.COMMANDS = []
+        self._commands = []
 
         logger.debug('\tresponse code:%s' % r.status_code)
         try:
             logger.debug('\tresponse: %s' % r.json())
         except:
             logger.debug('\tresponse: %s' % r.content)
-        
-        r.raise_for_status()
-        return r.json()
+
+        return r
 
     def command_length(self):
-        return len(self.COMMANDS)
+        return len(self._commands)

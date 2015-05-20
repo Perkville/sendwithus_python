@@ -127,6 +127,18 @@ print r.status_code
 # 200
 ```
 
+### Optional Headers
+
+```python
+r = api.send(
+    email_id='YOUR-EMAIL-ID',
+    recipient={'name': 'Matt',
+                'address': 'us@sendwithus.com'},
+    headers={'X-HEADER-ONE': 'header-value'})
+print r.status_code
+# 200
+```
+
 ### Optional ESP Account
 
 ```python
@@ -151,6 +163,29 @@ print r.status_code
 # 200
 ```
 
+### Optional Inline Image
+
+```python
+r = api.send(
+    email_id='YOUR-EMAIL-ID',
+    recipient={'name': 'Matt',
+               'address': 'us@sendwithus.com'},
+    inline=open('image.jpg', 'r'))
+print r.status_code
+# 200
+```
+
+### Optional Locale
+```python
+r = api.send(
+    email_id='YOUR-EMAIL-ID',
+    recipient={'name': 'Matt',
+               'address': 'us@sendwithus.com'},
+    locale='en-US')
+print r.status_code
+# 200
+```
+
 # Drip Campaigns
 
 ## List all drip campaigns
@@ -166,7 +201,7 @@ api.list_drip_campaigns()
 Starts a customer on the first step of a specified drip campaign
 
 ```python
-api.start_on_drip_campaign('customer@email.com', 'dc_1234asdf1234')
+api.start_on_drip_campaign('dc_1234asdf1234', {'address':'customer@email.com'})
 ```
 
 ### Extra Data
@@ -174,7 +209,16 @@ api.start_on_drip_campaign('customer@email.com', 'dc_1234asdf1234')
 You may specify extra data to be merged into the templates in the drip campaign
 
 ```python
-api.start_on_drip_campaign('customer@email.com', 'dc_1234asdf1234', email_data={'color': 'blue'})
+api.start_on_drip_campaign(
+    'dc_1234asdf1234',
+    {'address':'customer@email.com'},
+    email_data={'color': 'blue'},
+    sender={'address': 'from@email.com'},
+    cc=[{'address': 'cc@email.com'}],
+    tags=['tag_one', 'tag_two'],
+    esp_account='esp_1234',
+    locale='en-US'
+)
 ```
 
 ## Remove a customer from a drip campaign
@@ -201,10 +245,16 @@ api.drip_campaign_details('dc_1234asdf1234')
 
 # Customers
 
+## Get a Customer
+
+```python
+api.customer_details('customer@example.com')
+```
+
 ## Create/update Customer
 
 You can use the same endpoint to create or update a customer. Sendwithus
-will peform a merge of the data on the customer profile, preferring the new data.
+will perform a merge of the data on the customer profile, preferring the new data.
 
 ```python
 api.customer_create('customer@example.com', data={'first_name': 'Matt'})
@@ -215,6 +265,18 @@ api.customer_create('customer@example.com', data={'first_name': 'Matt'})
 
 ```python
 api.customer_delete('customer@example.com')
+```
+
+## Add Customer to a Group
+
+```python
+api.add_customer_to_group('customer@example.com', 'grp_1234')
+```
+
+## Remove Customer from a Group
+
+```python
+api.remove_customer_from_group('customer@example.com', 'grp_1234')
 ```
 
 # Conversions
@@ -228,6 +290,26 @@ against your sent emails.
 
 ```python
 api.customer_conversion('customer@example.com', revenue=10050)
+```
+
+# Customer Groups
+
+## Create a Customer Group
+
+```python
+api.create_customer_group('group_name', 'sample group description')
+```
+
+## Delete a customer group
+
+```python
+api.delete_customer_group('grp_1234')
+```
+
+## Update a Customer Group
+
+```python
+api.update_customer_group('new_name', 'updated group description')
 ```
 
 # Segmentation

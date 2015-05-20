@@ -1,5 +1,7 @@
+import json
 import unittest
 import decimal
+import time
 
 from sendwithus import api
 
@@ -213,6 +215,22 @@ class TestAPI(unittest.TestCase):
             tags='bad')
         self.assertFail(result)
 
+    def test_send_headers(self):
+        result = self.api.send(
+            self.EMAIL_ID,
+            self.recipient,
+            email_data = self.email_data,
+            headers={'X-HEADER-ONE': 'header-value'})
+        self.assertSuccess(result)
+
+    def test_send_headers_invalid(self):
+        result = self.api.send(
+            self.EMAIL_ID,
+            self.recipient,
+            email_data = self.email_data,
+            headers='X-HEADER-ONE')
+        self.assertFail(result)
+
     def test_drip_deactivate(self):
         result = self.api.drip_deactivate(self.email_address)
         self.assertSuccess(result)
@@ -225,13 +243,15 @@ class TestAPI(unittest.TestCase):
             email_version_name='version-override')
         self.assertSuccess(result)
 
-    def test_create_customer(self):
+    def test_customer_actions(self):
         data = {'first_name': 'Python Client Unit Test'}
         result = self.api.customer_create('test+python@sendwithus.com', data)
         self.assertSuccess(result)
-
-    def test_delete_customer(self):
         result = self.api.customer_delete('test+python@sendwithus.com')
+        self.assertSuccess(result)
+
+    def test_get_customer(self):
+        result = self.api.customer_details('customer@example.com')
         self.assertSuccess(result)
 
     def test_customer_conversion(self):
@@ -240,6 +260,21 @@ class TestAPI(unittest.TestCase):
 
     def test_customer_conversion_revenue(self):
         result = self.api.customer_conversion('test+python@sendwithus.com', revenue=1234)
+        self.assertSuccess(result)
+
+    def test_customer_group_actions(self):
+        result = self.api.create_customer_group(name=str(time.time), description='sample description')
+        self.assertSuccess(result)
+        group_id = json.loads(result.text)['group']['id']
+        result = self.api.update_customer_group(group_id=group_id, name='new+name', description='new description')
+        self.assertSuccess(result)
+        result = self.api.add_customer_to_group(email='customer@example.com', group_id=group_id)
+        self.assertSuccess(result)
+        result = self.api.delete_customer_group(group_id=group_id)
+        self.assertSuccess(result)
+
+    def test_remove_customer_from_group(self):
+        result = self.api.remove_customer_from_group(email='customer@example.com', group_id='grp_1234')
         self.assertSuccess(result)
 
     def test_send_segment(self):
@@ -254,30 +289,34 @@ class TestAPI(unittest.TestCase):
     def test_start_on_drip_campaign(self):
         """ Test starting a customer on a drip campaign. """
         result = self.api.start_on_drip_campaign(
-            self.email_address,
-            self.enabled_drip_campaign_id)
+            self.enabled_drip_campaign_id,
+            {'address': self.email_address}
+        )
         self.assertSuccess(result)
 
     def test_start_on_disabled_drip_campaign(self):
         """ Test starting a customer on a drip campaign. """
         result = self.api.start_on_drip_campaign(
-            self.email_address,
-            self.disabled_drip_campaign_id)
+            self.disabled_drip_campaign_id,
+            {'address': self.email_address}
+        )
         self.assertFail(result)
 
     def test_start_on_false_drip_campaign(self):
         """ Test starting a customer on a drip campaign. """
         result = self.api.start_on_drip_campaign(
-            self.email_address,
-            self.false_drip_campaign_id)
+            self.false_drip_campaign_id,
+            {'address': self.email_address}
+        )
         self.assertFail(result)
 
     def test_start_on_drip_campaign_with_data(self):
         """ Test starting a customer on a drip campaign with data. """
         result = self.api.start_on_drip_campaign(
-            self.email_address,
             self.enabled_drip_campaign_id,
-            email_data=self.email_data)
+            {'address': self.email_address},
+            email_data=self.email_data
+        )
         self.assertSuccess(result)
 
     def test_remove_from_drip_campaign(self):
@@ -304,25 +343,41 @@ class TestAPI(unittest.TestCase):
     #     self.assertEqual(result.json().get('object'), 'drip_step')
 
     def test_batch_create_customer(self):
-        batch_api = self.api.start_batch()
+        batch_api_one = self.api.start_batch()
+        batch_api_two = self.api.start_batch()
 
         data = {'segment': 'Batch Updated Customer'}
         for x in range(10):
-            batch_api.customer_create('test+python+%s@sendwithus.com' % x, data)
-            self.assertEqual(batch_api.command_length(), x + 1)
+            batch_api_one.customer_create('test+python+%s@sendwithus.com' % x, data)
+            self.assertEqual(batch_api_one.command_length(), x + 1)
 
-        result = batch_api.execute()
-        # should return a list of 10 result objects
+            if (x % 2) == 0:
+                batch_api_two.customer_create('test+python+%s+again@sendwithus.com' % x, data)
+                self.assertEqual(batch_api_two.command_length(), (x/2)+1)
+
+        # Run batch 1
+        result = batch_api_one.execute().json()
         self.assertEqual(len(result), 10)
         for response in result:
             self.assertEqual(response['status_code'], 200)
 
-        # queue should be empty now.
-        self.assertEqual(batch_api.command_length(), 0)
+        # Batch one should be empty, batch two still full
+        self.assertEqual(batch_api_one.command_length(), 0)
+        self.assertEqual(batch_api_two.command_length(), 5)
+
+        result = batch_api_two.execute().json()
+        self.assertEqual(len(result), 5)
+        for response in result:
+            self.assertEqual(response['status_code'], 200)
+
+        # Both batches now empty
+        self.assertEqual(batch_api_one.command_length(), 0)
+        self.assertEqual(batch_api_two.command_length(), 0)
 
     def test_render(self):
         result = self.api.render(self.EMAIL_ID, self.email_data)
         self.assertSuccess(result)
+
 
 if __name__ == '__main__':
     unittest.main()
